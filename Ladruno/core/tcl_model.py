@@ -7,7 +7,8 @@ class TCL_Model:
                  number_of_nodes: int = 1, 
                  max_nodes: int = 18,
                  max_tasks_per_node: int = 32,
-                 verbose: bool = False):
+                 verbose: bool = False,
+                 opensees_exe = '/mnt/nfshare/bin/openseesmp-26062025'):
         
         self.model_path = model_path
         
@@ -16,4 +17,5 @@ class TCL_Model:
                        number_of_nodes=number_of_nodes,
                        max_nodes=max_nodes,
                        max_tasks_per_node=max_tasks_per_node,
-                       verbose=verbose)
+                       verbose=verbose,
+                       opensees_exe=opensees_exe)

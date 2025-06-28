@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 import h5py
 
+from Ladruno.utilities.h5 import H5RepairTool
 
 class Run:
     def __init__(self,
@@ -17,13 +18,15 @@ class Run:
                  number_of_nodes: int = 1,
                  max_nodes: int = 18,
                  max_tasks_per_node: int = 32,
-                 verbose: bool = False):
+                 verbose: bool = False,
+                 opensees_exe: str | Path = "/mnt/nfshare/bin/openseesmp-26062025"):
         
         self.path = Path(folder_path).resolve()
         self.number_of_nodes = number_of_nodes
         self.max_nodes = max_nodes
         self.max_tasks_per_node = max_tasks_per_node
         self.verbose = verbose
+        self.opensees_exe = Path(opensees_exe).resolve()
         
         self.fix: H5RepairTool  = H5RepairTool(
             directory = self.path,
@@ -109,8 +112,7 @@ class Run:
         nodes: int | None = None,
         ntasks: int | None = None,
         ntasks_per_node: int | None = None,
-        exclude: Sequence[str] | None = None,
-        exe: str | Path = "/mnt/nfshare/bin/openseesmp-26062025",
+        exclude: Sequence[str] | None = None,,
         tcl_file: str = "main.tcl",
         monitor_ram: bool = True,
         monitor_interval: int = 30,
@@ -144,7 +146,7 @@ class Run:
                 ntasks=ntasks,
                 ntasks_per_node=ntasks_per_node,
                 exclude=exclude,
-                exe=exe,
+                exe=self.opensees_exe,
                 tcl_file=tcl_file,
                 monitor_ram=monitor_ram,
                 monitor_interval=monitor_interval,
