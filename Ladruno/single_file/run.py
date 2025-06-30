@@ -112,7 +112,7 @@ class Run:
         nodes: int | None = None,
         ntasks: int | None = None,
         ntasks_per_node: int | None = None,
-        exclude: Sequence[str] | None = None,,
+        exclude: Sequence[str] | None = None,
         tcl_file: str = "main.tcl",
         monitor_ram: bool = True,
         monitor_interval: int = 30,
