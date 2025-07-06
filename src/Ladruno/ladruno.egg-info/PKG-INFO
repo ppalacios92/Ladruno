@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: ladruno
+Version: 0.1.0
+Summary: Slurm automation and HDF5 repair tools for OpenSees workflows
+Author: Nicolas Mora Bowen
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: h5py

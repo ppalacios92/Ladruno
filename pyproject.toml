@@ -3,15 +3,15 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ladruno"
+name = "Ladruno"
 version = "0.1.0"
 description = "Slurm automation and HDF5 repair tools for OpenSees workflows"
 authors = [{ name = "Nicolas Mora Bowen" }]
-readme = "README.md"
+readme = "src/Ladruno/README.md"
 requires-python = ">=3.10"
 dependencies = [
     "h5py"
 ]
 
 [tool.setuptools.packages.find]
-where = ["Ladruno"]
+where = ["src"]

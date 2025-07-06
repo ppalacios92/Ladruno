@@ -56,11 +56,11 @@ class Run:
             * If there are missing parts (holes in numbering), choose the
               larger of the two so we don’t under-allocate.
         """
-        part_rx = re.compile(r"\.part-(\d+)\.mpco$")
+        part_rx = re.compile(r"\.part-(\d+)\.mpco.cdata$")
 
         indices: set[int] = {
             int(m.group(1))
-            for p in self.path.glob("**/*.mpco")
+            for p in self.path.glob("**/*.mpco.cdata")
             if (m := part_rx.search(p.name))
         }
 
@@ -72,7 +72,7 @@ class Run:
         
         if self.verbose:
             print(f"Found {unique} unique partitions, max index is {max_idx - 1}.")
-        
+
         return max(max_idx, unique)
     
     def get_nodes_and_tasks(self) -> tuple[int, int]:
@@ -105,7 +105,7 @@ class Run:
     def submit(
         self,
         *,
-        archive: bool = True,         # wait, fix flags, then move folder
+        archive: bool = False,         # wait, fix flags, then move folder
         fix: bool = True,             # clear HDF5 “open-for-write” flags
         rebuild: bool = True,         # regenerate run.sh before sbatch
         job_name: str | None = None,
@@ -151,10 +151,10 @@ class Run:
                 monitor_ram=monitor_ram,
                 monitor_interval=monitor_interval,
                 log_file=log_file,
+                archive=archive,
             )
 
         script = self.path / "run.sh"
-
         # 2. Submit job
         try:
             proc = subprocess.run(
@@ -162,7 +162,10 @@ class Run:
                 capture_output=True,
                 text=True,
                 check=True,
+                cwd=self.path
             )
+            # 🔍 Mostrar la salida y errores por consola
+
             job_id = int(proc.stdout.split()[-1])
             if self.verbose:
                 print(f"🚀 Submitted batch job {job_id}")
@@ -170,9 +173,7 @@ class Run:
             print("❌ Failed to submit job:\n", e.stderr)
             raise
 
-        # 3. Wait + fix + move if requested
-        if archive:
-            self.archive_after_finish(job_id, fix_flags=fix)
+
 
         return job_id
 
@@ -210,78 +211,64 @@ class Run:
             done & )
             MONITOR_PID=$!
         """)
-        
-    def archive_after_finish(
-        self,
-        job_id: int,
-        *,
-        source_root: str | Path = "/mnt/deadmanschest/nmorabowen",
-        dest_root:   str | Path = "/mnt/krakenschest/home/nmorabowen",
-        poll_interval: int = 30,
-        keep_manifest: bool = True,
-        fix_flags: bool = True,
-    ) -> Path:
+
+
+
+
+    import textwrap
+
+    def move_and_cleanup_block(self) -> str:
+
+        # source_root: str | Path = "/mnt/deadmanschest/pxpalacios",
+        # dest_root:   str | Path = "/mnt/krakenschest/home/pxpalacios",
+
         """
-        Block until *job_id* finishes, then move the whole analysis folder
-        under *dest_root*, preserving its path relative to *source_root*.
-
-        Example
-        -------
-        If self.path == /mnt/deadmanschest/nmorabowen/X/Y/Z
-        the folder is moved to
-            /mnt/krakenschest/home/nmorabowen/X/Y/Z
+        Returns a Bash block that:
+        - Captures runtime and exit code
+        - Logs metadata to status.txt
+        - Moves the job directory to krakenschest
+        - Cleans up original folder if successful
         """
+        return textwrap.dedent("""\
+            # --- Postproceso: mover carpeta si el job terminó correctamente ---
+            EXIT_CODE=$?
+            DURATION=$SECONDS
 
-        src_root  = Path(source_root).resolve()
-        dst_root  = Path(dest_root).resolve()
-        src_path  = self.path.resolve()
+            echo "Elapsed: $DURATION seconds."
+            echo "Code finished with exit code $EXIT_CODE."
+            echo "LARGA VIDA AL LADRUÑO!!!"
 
-        # --- sanity: make sure the analysis lives under the source root ----
-        try:
-            rel_path = src_path.relative_to(src_root)
-        except ValueError:
-            raise ValueError(f"{src_path} is not inside {src_root}")
+            ORIG_PATH=$(pwd)
+            REL_PATH="${ORIG_PATH#/mnt/deadmanschest/pxpalacios/}"
+            DEST_BASE="/mnt/krakenschest/home/pxpalacios"
+            DEST_PATH="${DEST_BASE}/${REL_PATH}"
 
-        dst_path = dst_root / rel_path
+            STATUS_FILE="status.txt"
+            {
+            echo "Execution Date: $(date)"
+            echo "Executed By: $(whoami)"
+            echo "Duration: $DURATION seconds"
+            echo "Exit Code: $EXIT_CODE"
+            echo "Original Path: $ORIG_PATH"
+            echo "Destination Path: $DEST_PATH"
+            } > "$STATUS_FILE"
 
-        # --- wait for Slurm job to disappear from queue --------------------
-        if self.verbose:
-            print(f"⏳ Waiting for job {job_id} to finish …")
-        while True:
-            q = subprocess.run(
-                ["squeue", "-h", "-j", str(job_id)],
-                capture_output=True, text=True
-            )
-            if q.returncode != 0:
-                raise RuntimeError("squeue failed while polling job status")
-            if not q.stdout.strip():
-                break
-            time.sleep(poll_interval)
+            if [ "$EXIT_CODE" -eq 0 ]; then
+            echo "📁 Copiando a destino: $DEST_PATH"
+            mkdir -p "$DEST_PATH"
+            rsync -a --exclude="status.txt" ./ "$DEST_PATH/"
+            if [ $? -eq 0 ]; then
+                echo "✅ Copia completada. Limpiando carpeta original (excepto status.txt)..."
+                find . -mindepth 1 ! -name "status.txt" -exec rm -rf {} +
+                echo "🧼 Limpieza completa."
+            else
+                echo "⚠️ Error en la copia. No se elimina nada."
+            fi
+            else
+            echo "❌ Simulación fallida. No se copia ni borra nada."
+            fi
+        """)
 
-        # --- file cleanup if requested -------------------------------
-        if fix_flags:
-            if self.verbose:
-                print("🔧 Running H5RepairTool to fix flags …")
-            self.fix.run_full_check_and_fix(verbose=self.verbose)
-        
-        # --- move the folder ------------------------------------------------
-        dst_path.parent.mkdir(parents=True, exist_ok=True)
-        if dst_path.exists():
-            raise FileExistsError(f"Destination already exists: {dst_path}")
-
-        shutil.move(str(src_path), dst_path)
-        if self.verbose:
-            print(f"📦 Moved {src_path}  →  {dst_path}")
-
-        # --- optional manifest ---------------------------------------------
-        if keep_manifest:
-            manifest = dst_root / "archive_moves.log"
-            with manifest.open("a") as mf:
-                mf.write(f"{datetime.now().isoformat()}  job={job_id}  {src_path} -> {dst_path}\n")
-            if self.verbose:
-                print(f"📝 Move recorded in {manifest}")
-
-        return dst_path
 
     def build_run_script(
         self,
@@ -299,6 +286,8 @@ class Run:
         monitor_ram: bool = False,
         monitor_interval: int = 30,
         log_file: str = "memtrack_node.txt",
+        # ---------- optional MOVE -------------------------------------------
+        archive: bool = False,         # wait, fix flags, then move folder
         # ---------- misc -----------------------------------------------------
         script_name: str = "run.sh",
     ) -> Path:
@@ -312,7 +301,7 @@ class Run:
         if nodes is None or ntasks is None:
             nodes, ntasks = self.get_nodes_and_tasks()
         if ntasks_per_node is None:
-            ntasks_per_node = (ntasks + nodes - 1) // nodes  # ceil
+            ntasks_per_node_cal = (ntasks + nodes - 1) // nodes  # ceil
 
         job_name = job_name or self.get_folder_name()
 
@@ -320,13 +309,20 @@ class Run:
         header = [
             "#!/bin/bash",
             f"#SBATCH --job-name={job_name}",
-            f"#SBATCH --nodes={nodes}",
-            f"#SBATCH --ntasks={ntasks}",
-            f"#SBATCH --ntasks-per-node={ntasks_per_node}",
             f"#SBATCH --output=log.log",
         ]
+
+        if ntasks_per_node is not None:            
+            header.append(f"#SBATCH --ntasks-per-node={ntasks_per_node_cal}")
+        else:
+            header.append(f"#SBATCH --nodes={nodes}")
+            header.append(f"#SBATCH --ntasks={ntasks}")
+
+
+
         if exclude:
             header.append(f"#SBATCH --exclude={','.join(exclude)}")
+        
 
         # -------------------- optional RAM monitor --------------------------
         monitor_block = (
@@ -334,24 +330,32 @@ class Run:
             if monitor_ram
             else ""
         )
+        # -------------------- run_move --------------------------
+        if archive:
+            run_move=self.move_and_cleanup_block()
+        else:
+            run_move=""
 
         # -------------------- main body -------------------------------------
         body = textwrap.dedent(f"""\
-            pwd; hostname; date
-            export OMP_NUM_THREADS=1
-            LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/mnt/nfshare/lib
+pwd; hostname; date
+export OMP_NUM_THREADS=1
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/mnt/nfshare/lib
 
-            {monitor_block}
-            SECONDS=0
-            mpirun {exe} {tcl_file}
+{monitor_block}
+SECONDS=0
+mpirun {exe} {tcl_file}
 
-            # stop monitor (if running)
-            [ -n "$MONITOR_PID" ] && kill "$MONITOR_PID" 2>/dev/null
+# stop monitor (if running)
+[ -n "$MONITOR_PID" ] && kill "$MONITOR_PID" 2>/dev/null
 
-            echo "Elapsed: $SECONDS seconds."
-            echo "Code finished successfully."
-            echo "LARGA VIDA AL LADRUÑO!!!"
-        """)
+echo "Elapsed: $SECONDS seconds."
+echo "Code finished successfully."
+echo "LARGA VIDA AL LADRUÑO!!!"
+{run_move}
+""")
+
+
 
         script_path = self.path / script_name
         script_path.write_text("\n".join(header) + "\n" + body)
