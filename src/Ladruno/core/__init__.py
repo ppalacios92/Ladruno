@@ -1,1 +1,5 @@
-from .tcl_model import TCL_Model
+# Ladruno/core/__init__.py
+
+from Ladruno.core.model import Model
+
+__all__ = ["Model"]
