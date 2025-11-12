@@ -4,9 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "Ladruno"
-version = "0.1.0"
-description = "Slurm automation and HDF5 repair tools for OpenSees workflows"
-authors = [{ name = "Nicolas Mora Bowen" }]
+version = "2.0.0"
+description = "Unified SLURM automation with auto single/multi model detection, archiving, and HDF5 repair tools for OpenSees workflows"
+authors = [
+    { name = "Nicolas Mora Bowen" },
+    { name = "Patricio Palacios" }
+]
 readme = "src/Ladruno/README.md"
 requires-python = ">=3.10"
 dependencies = [
